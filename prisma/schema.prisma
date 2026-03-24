@@ -1,0 +1,483 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserRole {
+  CUSTOMER
+  PROVIDER
+  ADMIN
+}
+
+enum ProviderTier {
+  STANDARD
+  SILVER
+  GOLD
+  PLATINUM
+}
+
+enum Urgency {
+  FLEXIBLE
+  WITHIN_WEEK
+  WITHIN_3_DAYS
+  URGENT_24H
+  EMERGENCY
+}
+
+enum ServiceRequestStatus {
+  OPEN
+  QUOTED
+  BOOKED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  DISPUTED
+}
+
+enum QuoteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  WITHDRAWN
+}
+
+enum BookingStatus {
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED_BY_CUSTOMER
+  CANCELLED_BY_PROVIDER
+  NO_SHOW
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum PaymentMethod {
+  CASH
+  CREDIT_CARD
+  WALLET
+  CLIQ
+}
+
+enum NotificationType {
+  NEW_QUOTE
+  QUOTE_ACCEPTED
+  BOOKING_CONFIRMED
+  BOOKING_REMINDER
+  MESSAGE
+  REVIEW_RECEIVED
+  PAYMENT
+  SYSTEM
+}
+
+enum TransactionType {
+  BOOKING_PAYMENT
+  PLATFORM_FEE
+  PROVIDER_PAYOUT
+  REFUND
+  WALLET_TOPUP
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REVERSED
+}
+
+enum DisputeReason {
+  POOR_QUALITY
+  NO_SHOW
+  OVERCHARGED
+  HARASSMENT
+  FRAUD
+  PROPERTY_DAMAGE
+  OTHER
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  DISMISSED
+}
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  phone           String?
+  passwordHash    String
+  firstName       String
+  firstNameAr     String
+  lastName        String
+  lastNameAr      String
+  role            UserRole  @default(CUSTOMER)
+  avatar          String?
+  bio             String?
+  bioAr           String?
+  city            String?
+  area            String?
+  fullAddress     String?
+  language        String    @default("ar")
+  isVerified      Boolean   @default(false)
+  isPhoneVerified Boolean   @default(false)
+  isEmailVerified Boolean   @default(false)
+  referralCode    String?   @unique
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  providerProfile   ProviderProfile?
+  serviceRequests   ServiceRequest[]
+  quotesAsProvider  Quote[]
+  bookingsAsCustomer Booking[] @relation("CustomerBookings")
+  bookingsAsProvider Booking[] @relation("ProviderBookings")
+  reviewsWritten    Review[]  @relation("ReviewerReviews")
+  reviewsReceived   Review[]  @relation("RevieweeReviews")
+  sentMessages      Message[] @relation("SentMessages")
+  receivedMessages  Message[] @relation("ReceivedMessages")
+  notifications     Notification[]
+  paymentsSent      PaymentTransaction[] @relation("PayerTransactions")
+  paymentsReceived  PaymentTransaction[] @relation("PayeeTransactions")
+  wallet            Wallet?
+  reportsSubmitted  Report[]  @relation("ReporterReports")
+  reportsAgainst    Report[]  @relation("ReportedReports")
+  favorites         Favorite[]
+  conversationParticipants ConversationParticipant[]
+  homeProfile       HomeProfile?
+}
+
+model ProviderProfile {
+  id                   String      @id @default(cuid())
+  userId               String      @unique
+  user                 User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessName         String
+  businessNameAr       String
+  businessDescription  String?
+  businessDescriptionAr String?
+  slug                 String      @unique
+  yearsOfExperience    Int         @default(0)
+  identityVerified     Boolean     @default(false)
+  backgroundCheckPassed Boolean    @default(false)
+  portfolioImages      String[]
+  certificates         String[]
+  averageRating        Float       @default(0)
+  totalReviews         Int         @default(0)
+  totalJobsCompleted   Int         @default(0)
+  responseTime         Int         @default(60)
+  availabilitySchedule Json?
+  instantBookEnabled   Boolean     @default(false)
+  tier                 ProviderTier @default(STANDARD)
+  isActive             Boolean     @default(true)
+  isSuspended          Boolean     @default(false)
+  coverImage           String?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+
+  services             ProviderService[]
+  serviceAreas         ProviderServiceArea[]
+}
+
+model ServiceCategory {
+  id                String           @id @default(cuid())
+  name              String
+  nameAr            String
+  slug              String           @unique
+  icon              String?
+  description       String?
+  descriptionAr     String?
+  parentCategoryId  String?
+  parentCategory    ServiceCategory? @relation("SubCategories", fields: [parentCategoryId], references: [id])
+  subCategories     ServiceCategory[] @relation("SubCategories")
+  averagePriceMin   Float?
+  averagePriceMax   Float?
+  isActive          Boolean          @default(true)
+  sortOrder         Int              @default(0)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  serviceRequests   ServiceRequest[]
+  providerServices  ProviderService[]
+}
+
+model ProviderService {
+  id                String          @id @default(cuid())
+  providerId        String
+  provider          ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  categoryId        String
+  category          ServiceCategory @relation(fields: [categoryId], references: [id])
+  priceMin          Float?
+  priceMax          Float?
+  description       String?
+  descriptionAr     String?
+
+  @@unique([providerId, categoryId])
+}
+
+model ProviderServiceArea {
+  id         String          @id @default(cuid())
+  providerId String
+  provider   ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  city       String
+  area       String?
+
+  @@unique([providerId, city, area])
+}
+
+model ServiceRequest {
+  id             String               @id @default(cuid())
+  customerId     String
+  customer       User                 @relation(fields: [customerId], references: [id])
+  categoryId     String
+  category       ServiceCategory      @relation(fields: [categoryId], references: [id])
+  title          String
+  titleAr        String
+  description    String
+  descriptionAr  String
+  images         String[]
+  budgetMin      Float?
+  budgetMax      Float?
+  urgency        Urgency              @default(FLEXIBLE)
+  preferredDate  DateTime?
+  preferredTime  String?
+  city           String
+  area           String?
+  address        String?
+  status         ServiceRequestStatus @default(OPEN)
+  isGroupRequest Boolean              @default(false)
+  groupSize      Int?
+  expiresAt      DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  quotes         Quote[]
+  bookings       Booking[]
+  conversations  Conversation[]
+}
+
+model Quote {
+  id                String      @id @default(cuid())
+  providerId        String
+  provider          User        @relation(fields: [providerId], references: [id])
+  serviceRequestId  String
+  serviceRequest    ServiceRequest @relation(fields: [serviceRequestId], references: [id])
+  priceQuote        Float
+  estimatedDuration String?
+  message           String?
+  messageAr         String?
+  includesItems     Json?
+  availableDate     DateTime?
+  status            QuoteStatus @default(PENDING)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  booking           Booking?
+}
+
+model Booking {
+  id                        String        @id @default(cuid())
+  customerId                String
+  customer                  User          @relation("CustomerBookings", fields: [customerId], references: [id])
+  providerId                String
+  provider                  User          @relation("ProviderBookings", fields: [providerId], references: [id])
+  serviceRequestId          String
+  serviceRequest            ServiceRequest @relation(fields: [serviceRequestId], references: [id])
+  quoteId                   String?       @unique
+  quote                     Quote?        @relation(fields: [quoteId], references: [id])
+  scheduledDate             DateTime
+  scheduledTime             String?
+  actualStartTime           DateTime?
+  actualEndTime             DateTime?
+  totalPrice                Float
+  platformFee               Float         @default(0)
+  providerEarnings          Float         @default(0)
+  paymentStatus             PaymentStatus @default(PENDING)
+  paymentMethod             PaymentMethod @default(CASH)
+  status                    BookingStatus @default(CONFIRMED)
+  cancellationReason        String?
+  customerConfirmedCompletion Boolean     @default(false)
+  providerConfirmedCompletion Boolean     @default(false)
+  trackingStatus            String?
+  hasSanadiGuarantee        Boolean       @default(false)
+  createdAt                 DateTime      @default(now())
+  updatedAt                 DateTime      @updatedAt
+
+  review                    Review?
+  transactions              PaymentTransaction[]
+  reports                   Report[]
+  conversation              Conversation?
+}
+
+model Review {
+  id                 String   @id @default(cuid())
+  bookingId          String   @unique
+  booking            Booking  @relation(fields: [bookingId], references: [id])
+  reviewerId         String
+  reviewer           User     @relation("ReviewerReviews", fields: [reviewerId], references: [id])
+  revieweeId         String
+  reviewee           User     @relation("RevieweeReviews", fields: [revieweeId], references: [id])
+  rating             Int
+  title              String?
+  titleAr            String?
+  comment            String?
+  commentAr          String?
+  images             String[]
+  categories         Json?
+  isVerifiedBooking  Boolean  @default(true)
+  providerResponse   String?
+  providerResponseAr String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model Conversation {
+  id               String    @id @default(cuid())
+  serviceRequestId String?
+  serviceRequest   ServiceRequest? @relation(fields: [serviceRequestId], references: [id])
+  bookingId        String?   @unique
+  booking          Booking?  @relation(fields: [bookingId], references: [id])
+  lastMessageAt    DateTime  @default(now())
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+
+  participants     ConversationParticipant[]
+  messages         Message[]
+}
+
+model ConversationParticipant {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+
+  @@unique([conversationId, userId])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User         @relation("SentMessages", fields: [senderId], references: [id])
+  receiverId     String?
+  receiver       User?        @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  content        String
+  attachments    String[]
+  isRead         Boolean      @default(false)
+  readAt         DateTime?
+  createdAt      DateTime     @default(now())
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id])
+  type      NotificationType
+  title     String
+  titleAr   String
+  body      String
+  bodyAr    String
+  data      Json?
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+}
+
+model PaymentTransaction {
+  id                   String            @id @default(cuid())
+  bookingId            String?
+  booking              Booking?          @relation(fields: [bookingId], references: [id])
+  payerId              String
+  payer                User              @relation("PayerTransactions", fields: [payerId], references: [id])
+  payeeId              String
+  payee                User              @relation("PayeeTransactions", fields: [payeeId], references: [id])
+  amount               Float
+  currency             String            @default("JOD")
+  type                 TransactionType
+  method               PaymentMethod     @default(CASH)
+  status               TransactionStatus @default(PENDING)
+  transactionReference String?
+  createdAt            DateTime          @default(now())
+}
+
+model Wallet {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id])
+  balance     Float    @default(0)
+  lastUpdated DateTime @default(now())
+}
+
+model Report {
+  id          String        @id @default(cuid())
+  reporterId  String
+  reporter    User          @relation("ReporterReports", fields: [reporterId], references: [id])
+  reportedId  String
+  reported    User          @relation("ReportedReports", fields: [reportedId], references: [id])
+  bookingId   String?
+  booking     Booking?      @relation(fields: [bookingId], references: [id])
+  reason      DisputeReason
+  description String?
+  evidence    String[]
+  status      DisputeStatus @default(OPEN)
+  adminNotes  String?
+  resolution  String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model Favorite {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  providerId String
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, providerId])
+}
+
+model HomeProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id])
+  propertyType    String?
+  size            Float?
+  numberOfRooms   Int?
+  buildingAge     Int?
+  acType          String?
+  waterHeaterType String?
+  features        Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model VerificationToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  email     String
+  type      String   @default("EMAIL_VERIFICATION")
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Referral {
+  id             String   @id @default(cuid())
+  referrerId     String
+  referredEmail  String
+  referredUserId String?
+  status         String   @default("PENDING")
+  rewardAmount   Float    @default(5)
+  rewardCredited Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
