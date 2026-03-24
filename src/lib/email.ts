@@ -1,6 +1,10 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+function getResend() {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) throw new Error("RESEND_API_KEY is not set");
+  return new Resend(key);
+}
 
 const FROM_ADDRESS = "Sanadi <noreply@sanadi.jo>";
 
@@ -59,7 +63,7 @@ export async function sendVerificationEmail(
     </div>
   `;
 
-  return resend.emails.send({
+  return getResend().emails.send({
     from: FROM_ADDRESS,
     to: email,
     subject,
@@ -120,7 +124,7 @@ export async function sendPasswordResetEmail(
     </div>
   `;
 
-  return resend.emails.send({
+  return getResend().emails.send({
     from: FROM_ADDRESS,
     to: email,
     subject,
@@ -183,7 +187,7 @@ export async function sendReferralEmail(
     </div>
   `;
 
-  return resend.emails.send({
+  return getResend().emails.send({
     from: FROM_ADDRESS,
     to: recipientEmail,
     subject,
@@ -249,7 +253,7 @@ export async function sendBookingConfirmation(
     </div>
   `;
 
-  return resend.emails.send({
+  return getResend().emails.send({
     from: FROM_ADDRESS,
     to: email,
     subject,
